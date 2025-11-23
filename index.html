@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>随机相册 Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #000;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 10px 16px;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    #fileInput {
+      display: none;
+    }
+    .btn {
+      border: 1px solid #555;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #111;
+      color: #fff;
+    }
+    .btn:hover {
+      background: #222;
+    }
+
+    main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #viewer {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none; /* 手机上方便我们处理滑动 */
+      position: relative;
+    }
+    #viewer img,
+    #viewer video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
+    #statusText {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #aaa;
+      text-align: center;
+      padding: 16px;
+      line-height: 1.6;
+    }
+    #infoBar {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    #favoriteBadge {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255, 215, 0, 0.9);
+      color: #000;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      display: none;
+    }
+
+    .nav-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.9);
+    }
+    .nav-buttons .btn {
+      font-size: 12px;
+      padding: 4px 10px;
+    }
+
+    footer {
+      padding: 6px 16px 10px;
+      font-size: 11px;
+      color: #aaa;
+      background: rgba(0,0,0,0.95);
+      text-align: center;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>随机相册 Demo</div>
+    <div>
+      <button class="btn" onclick="document.getElementById('fileInput').click()">选择照片/视频</button>
+      <input id="fileInput" type="file" accept="image/*,video/*" multiple />
+    </div>
+  </header>
+
+  <main>
+    <div id="viewer">
+      <div id="statusText">
+        还没有选择任何照片或视频<br />
+        点右上角按钮，选择几张试试
+      </div>
+      <img id="imageElement" style="display:none" draggable="false" />
+      <video id="videoElement" style="display:none" controls></video>
+      <div id="favoriteBadge">已收藏</div>
+      <div id="infoBar"></div>
+    </div>
+  </main>
+
+  <div class="nav-buttons">
+    <button class="btn" onclick="prev()">⬅ 上一张</button>
+    <button class="btn" onclick="randomOne()">🎲 随机一张</button>
+    <button class="btn" onclick="next()">下一张 ➡</button>
+    <button class="btn" onclick="toggleFavorite()">⭐ 收藏/取消</button>
+    <button class="btn" onclick="deleteCurrent()">🗑 从列表移除</button>
+  </div>
+
+  <footer>
+    鼠标操作：用上面按钮即可。<br/>
+    手机上：上划=删除 · 下滑=收藏 · 左右划=切换 · 轻点=随机一张。
+  </footer>
+
+  <script>
+    // 媒体列表（只存在浏览器内存，不动真正相册）
+    let mediaList = []; // { url, type, name, favorite }
+    let currentIndex = -1;
+
+    const fileInput = document.getElementById('fileInput');
+    const viewer = document.getElementById('viewer');
+    const imgEl = document.getElementById('imageElement');
+    const videoEl = document.getElementById('videoElement');
+    const statusText = document.getElementById('statusText');
+    const infoBar = document.getElementById('infoBar');
+    const favoriteBadge = document.getElementById('favoriteBadge');
+
+    fileInput.addEventListener('change', (event) => {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0) return;
+
+      // 清理旧 URL
+      mediaList.forEach(m => URL.revokeObjectURL(m.url));
+
+      mediaList = files.map(file => {
+        const url = URL.createObjectURL(file);
+        const type = file.type.startsWith('video') ? 'video' : 'image';
+        return { url, type, name: file.name, favorite: false };
+      });
+
+      // 打乱顺序
+      shuffle(mediaList);
+      currentIndex = 0;
+      showCurrent();
+    });
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+    }
+
+    function showCurrent() {
+      if (mediaList.length === 0 || currentIndex < 0 || currentIndex >= mediaList.length) {
+        imgEl.style.display = 'none';
+        videoEl.style.display = 'none';
+        statusText.style.display = 'block';
+        statusText.textContent = '没有可显示的媒体，请重新选择文件';
+        infoBar.textContent = '';
+        favoriteBadge.style.display = 'none';
+        return;
+      }
+
+      const item = mediaList[currentIndex];
+
+      statusText.style.display = 'none';
+
+      if (item.type === 'image') {
+        imgEl.src = item.url;
+        imgEl.style.display = 'block';
+        videoEl.style.display = 'none';
+      } else {
+        videoEl.src = item.url;
+        videoEl.style.display = 'block';
+        imgEl.style.display = 'none';
+      }
+
+      infoBar.textContent = `${currentIndex + 1} / ${mediaList.length} · ${item.name}`;
+      favoriteBadge.style.display = item.favorite ? 'block' : 'none';
+    }
+
+    function next() {
+      if (mediaList.length === 0) return;
+      currentIndex = (currentIndex + 1) % mediaList.length;
+      showCurrent();
+    }
+
+    function prev() {
+      if (mediaList.length === 0) return;
+      currentIndex = (currentIndex - 1 + mediaList.length) % mediaList.length;
+      showCurrent();
+    }
+
+    function randomOne() {
+      if (mediaList.length === 0) return;
+      currentIndex = Math.floor(Math.random() * mediaList.length);
+      showCurrent();
+    }
+
+    function deleteCurrent() {
+      if (mediaList.length === 0) return;
+      mediaList.splice(currentIndex, 1);
+      if (mediaList.length === 0) {
+        currentIndex = -1;
+        showCurrent();
+        return;
+      }
+      currentIndex = Math.min(currentIndex, mediaList.length - 1);
+      showCurrent();
+    }
+
+    function toggleFavorite() {
+      if (mediaList.length === 0) return;
+      const item = mediaList[currentIndex];
+      item.favorite = !item.favorite;
+      favoriteBadge.style.display = item.favorite ? 'block' : 'none';
+    }
+
+    // ===== 手势：手机 / 触摸板滑动 =====
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
+
+    function handleStart(x, y) {
+      startX = x;
+      startY = y;
+      startTime = Date.now();
+    }
+
+    function handleEnd(x, y) {
+      const dx = x - startX;
+      const dy = y - startY;
+      const dt = Date.now() - startTime;
+
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      const tapThreshold = 200;   // 点击时间
+      const moveThreshold = 10;   // 点击允许的移动范围
+      const swipeThreshold = 40;  // 认为是滑动的距离
+
+      // 轻点：随机一张
+      if (dt < tapThreshold && absX < moveThreshold && absY < moveThreshold) {
+        randomOne();
+        return;
+      }
+
+      if (absX > absY) {
+        // 左右滑
+        if (dx < -swipeThreshold) {
+          next(); // 向左滑 → 下一张
+        } else if (dx > swipeThreshold) {
+          prev(); // 向右滑 → 上一张
+        }
+      } else {
+        // 上下滑
+        if (dy < -swipeThreshold) {
+          deleteCurrent(); // 向上 → 删除
+        } else if (dy > swipeThreshold) {
+          toggleFavorite(); // 向下 → 收藏
+        }
+      }
+    }
+
+    // 触摸事件（手机）
+    viewer.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      handleStart(t.clientX, t.clientY);
+    });
+
+    viewer.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      handleEnd(t.clientX, t.clientY);
+    });
+
+    // 鼠标事件（电脑上也可以拖动）
+    let isMouseDown = false;
+
+    viewer.addEventListener('mousedown', (e) => {
+      isMouseDown = true;
+      handleStart(e.clientX, e.clientY);
+    });
+
+    viewer.addEventListener('mouseup', (e) => {
+      if (!isMouseDown) return;
+      isMouseDown = false;
+      handleEnd(e.clientX, e.clientY);
+    });
+  </script>
+</body>
+</html>
