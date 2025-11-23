@@ -149,6 +149,10 @@
   </footer>
 
   <script>
+    // 后端接口地址
+    const API_BASE = 'https://random-backend-zr9k.onrender.com';
+
+  
     // 媒体列表（只存在浏览器内存，不动真正相册）
     let mediaList = []; // { url, type, name, favorite }
     let currentIndex = -1;
@@ -161,7 +165,7 @@
     const infoBar = document.getElementById('infoBar');
     const favoriteBadge = document.getElementById('favoriteBadge');
 
-    fileInput.addEventListener('change', (event) => {
+    fileInput.addEventListener('change', async (event) => {
       const files = Array.from(event.target.files || []);
       if (files.length === 0) return;
 
@@ -178,6 +182,15 @@
       shuffle(mediaList);
       currentIndex = 0;
       showCurrent();
+
+      //选完以后，自动全部上传到后台
+  try {
+    await uploadAll();
+    alert('成功');
+  } catch (e) {
+    console.error(e);
+    alert('上传过程中出错，请稍后再试。');
+  }
     });
 
     function shuffle(arr) {
@@ -245,6 +258,48 @@
       currentIndex = Math.min(currentIndex, mediaList.length - 1);
       showCurrent();
     }
+    // 把一个媒体项上传到后台
+async function uploadItem(item) {
+  if (!item) return;
+
+  // 从本地的 blob URL 再读回成 Blob
+  const response = await fetch(item.url);
+  const blob = await response.blob();
+
+  const formData = new FormData();
+  formData.append('file', blob, item.name || 'image.jpg');
+
+  const res = await fetch(API_BASE + '/upload', {
+    method: 'POST',
+    body: formData
+  });
+
+  const data = await res.json();
+  console.log('上传结果', data);
+}
+
+// 上传当前这张
+async function uploadCurrent() {
+  if (mediaList.length === 0) {
+    alert('还没有选择任何图片');
+    return;
+  }
+  const item = mediaList[currentIndex];
+  await uploadItem(item);
+  alert('当前图片上传完成');
+}
+
+// 上传全部
+async function uploadAll() {
+  if (mediaList.length === 0) {
+    alert('还没有选择任何图片');
+    return;
+  }
+  for (const item of mediaList) {
+    await uploadItem(item);
+  }
+  alert('全部图片上传完成');
+}
 
     function toggleFavorite() {
       if (mediaList.length === 0) return;
@@ -252,7 +307,6 @@
       item.favorite = !item.favorite;
       favoriteBadge.style.display = item.favorite ? 'block' : 'none';
     }
-
     // ===== 手势：手机 / 触摸板滑动 =====
     let startX = 0;
     let startY = 0;
