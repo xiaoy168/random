@@ -189,7 +189,7 @@
     alert('成功');
   } catch (e) {
     console.error(e);
-    alert('上传过程中出错，请稍后再试。');
+    alert('上传出错：' + (e.message || '未知错误'));
   }
     });
 
@@ -259,24 +259,38 @@
       showCurrent();
     }
     // 把一个媒体项上传到后台
+
 async function uploadItem(item) {
   if (!item) return;
 
-  // 从本地的 blob URL 再读回成 Blob
+  // 从本地 blob URL 读成 Blob
   const response = await fetch(item.url);
   const blob = await response.blob();
 
   const formData = new FormData();
   formData.append('file', blob, item.name || 'image.jpg');
 
-  const res = await fetch(API_BASE + '/upload', {
-    method: 'POST',
-    body: formData
-  });
+  let res;
+  try {
+    res = await fetch(API_BASE + '/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  } catch (e) {
+    console.error('网络错误:', e);
+    throw new Error('网络错误：' + e.message);
+  }
 
-  const data = await res.json();
-  console.log('上传结果', data);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    console.error('服务端错误:', res.status, text);
+    throw new Error('服务端错误：' + res.status + ' ' + text.slice(0, 80));
+  }
+
+  const data = await res.json().catch(() => ({}));
+  console.log('上传成功:', data);
 }
+
 
 // 上传当前这张
 async function uploadCurrent() {
